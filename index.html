@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>PDR Logic — Hail Damage Report</title>
+<style>
+  :root {
+    --bg: #0f141a;
+    --card: #1a212b;
+    --card-2: #212a36;
+    --line: #2c3745;
+    --text: #e8edf3;
+    --muted: #93a1b3;
+    --accent: #ff8a3d;      /* hail-orange, high contrast on dark */
+    --accent-ink: #1a0f06;
+    --good: #35c26a;
+    --bad: #ff5d5d;
+    --focus: #6db3ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    -webkit-text-size-adjust: 100%;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 16px 16px 96px; }
+
+  header.app {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; position: sticky; top: 0; z-index: 5;
+    background: linear-gradient(180deg, var(--bg) 70%, transparent);
+  }
+  header.app h1 { font-size: 18px; margin: 0; letter-spacing: .2px; }
+  header.app .sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+  .net {
+    margin-left: auto; font-size: 12px; font-weight: 600;
+    padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  }
+  .net .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); }
+  .net.off { color: #ffd9a1; border-color: #5a4326; }
+  .net.off .dot { background: var(--accent); }
+
+  .banner {
+    display: none; align-items: center; gap: 10px;
+    background: #22303f; border: 1px solid #34506b; color: #dcefff;
+    padding: 10px 12px; border-radius: 10px; margin: 0 0 14px;
+  }
+  .banner button { margin-left: auto; }
+
+  section.card {
+    background: var(--card); border: 1px solid var(--line);
+    border-radius: 14px; padding: 16px; margin: 0 0 16px;
+  }
+  section.card > h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .10em;
+    color: var(--muted); margin: 0 0 12px; font-weight: 700;
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field.full { grid-column: 1 / -1; }
+  label { font-size: 13px; color: var(--muted); font-weight: 600; }
+  label .opt { color: #6b7a8d; font-weight: 500; }
+  input, select {
+    font: inherit; color: var(--text); background: var(--card-2);
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px;
+    min-height: 48px; width: 100%;
+  }
+  input:focus, select:focus, button:focus-visible {
+    outline: 3px solid var(--focus); outline-offset: 1px;
+  }
+  .err-text { color: var(--bad); font-size: 12px; min-height: 0; }
+  input.invalid, select.invalid { border-color: var(--bad); }
+
+  /* Car diagram — top-down, tap a panel to add it */
+  .diagram-hint { color: var(--muted); font-size: 13px; margin: -4px 0 12px; }
+  .diagram-wrap { display: grid; place-items: center; }
+  svg.car { width: 100%; max-width: 340px; height: auto; touch-action: manipulation; }
+  .panel-shape rect {
+    fill: var(--card-2); stroke: var(--line); stroke-width: 2;
+    rx: 6; transition: fill .12s, stroke .12s; cursor: pointer;
+  }
+  .panel-shape:hover rect { stroke: var(--muted); }
+  .panel-shape.on rect { fill: var(--accent); stroke: #ffb277; }
+  .panel-shape text { fill: var(--muted); font-size: 9px; font-weight: 600; pointer-events: none; }
+  .panel-shape.on text { fill: var(--accent-ink); }
+  .panel-shape .badge-bg { fill: var(--accent-ink); }
+  .panel-shape.on .badge-bg { fill: #1a0f06; }
+  .panel-shape .badge-txt { fill: #fff; font-size: 9px; font-weight: 800; }
+  .car-outline { fill: none; stroke: var(--line); stroke-width: 2; }
+  .car-glass { fill: #16202b; stroke: var(--line); stroke-width: 1.5; }
+
+  .count-line { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+  .count-line b { color: var(--text); }
+
+  /* Per-panel data-entry cards */
+  #panelCards { display: flex; flex-direction: column; gap: 12px; }
+  .pcard {
+    background: var(--card-2); border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 14px;
+  }
+  .pcard .top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .pcard .pname { font-weight: 700; font-size: 15px; }
+  .pcard .remove {
+    margin-left: auto; background: transparent; border: 1px solid var(--line);
+    color: var(--muted); min-height: 36px; padding: 4px 10px; border-radius: 8px;
+  }
+  .pcard .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stepper { display: flex; align-items: stretch; gap: 8px; }
+  .stepper button {
+    width: 52px; min-height: 52px; font-size: 26px; line-height: 1;
+    background: var(--card); border: 1px solid var(--line); color: var(--text);
+    border-radius: 10px; font-weight: 700;
+  }
+  .stepper button:active { background: #2a3542; }
+  .stepper input { text-align: center; font-size: 20px; font-weight: 700; -moz-appearance: textfield; }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .empty { color: var(--muted); font-size: 14px; text-align: center; padding: 8px 0; }
+
+  /* Submit + actions */
+  .actions { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6;
+    background: linear-gradient(0deg, var(--bg) 65%, transparent);
+    padding: 14px 16px calc(14px + env(safe-area-inset-bottom));
+  }
+  .actions .inner { max-width: 760px; margin: 0 auto; display: flex; gap: 10px; }
+  button.primary {
+    flex: 1; background: var(--accent); color: var(--accent-ink);
+    border: none; min-height: 56px; border-radius: 12px;
+    font-size: 17px; font-weight: 800; letter-spacing: .2px;
+  }
+  button.primary:active { filter: brightness(.94); }
+  button.ghost {
+    background: transparent; color: var(--text); border: 1px solid var(--line);
+    min-height: 56px; border-radius: 12px; padding: 0 16px; font-weight: 700;
+  }
+
+  /* Report summary */
+  #report { display: none; }
+  #report.show { display: block; }
+  .report-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .report-head .tag {
+    font-size: 12px; font-weight: 800; padding: 5px 10px; border-radius: 999px;
+    background: #123a24; color: #7ff0a8; border: 1px solid #1f6b40;
+  }
+  .report-head .tag.queued { background: #3a2f12; color: #ffd48a; border-color: #6b5320; }
+  .sum-veh { font-size: 20px; font-weight: 800; margin: 2px 0 2px; }
+  .sum-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+  table.sum { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.sum th, table.sum td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--line); }
+  table.sum th { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+  table.sum td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+  .totals { margin-top: 10px; color: var(--muted); font-size: 13px; }
+  .totals b { color: var(--text); }
+  details.json { margin-top: 14px; }
+  details.json summary { cursor: pointer; color: var(--muted); font-weight: 600; }
+  pre#json {
+    background: #0b0f14; border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px; overflow-x: auto; font-size: 12.5px; margin-top: 8px;
+  }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); border: 0;
+  }
+</style>
+</head>
+<body>
+<header class="app">
+  <div>
+    <h1>Hail Damage Report</h1>
+    <div class="sub">PDR Logic — field intake</div>
+  </div>
+  <span id="net" class="net"><span class="dot"></span><span id="netLabel">Online</span></span>
+</header>
+
+<div class="wrap">
+
+  <div id="draftBanner" class="banner" role="status">
+    <span>Unsaved draft restored from this device.</span>
+    <button class="pcard remove" id="discardDraft" style="border-radius:8px;">Discard</button>
+  </div>
+
+  <!-- ============ Vehicle ============ -->
+  <section class="card">
+    <h2>Vehicle</h2>
+    <div class="grid">
+      <div class="field">
+        <label for="year">Year</label>
+        <input id="year" inputmode="numeric" autocomplete="off" placeholder="2024">
+      </div>
+      <div class="field">
+        <label for="color">Color</label>
+        <input id="color" autocomplete="off" placeholder="Silver">
+      </div>
+      <div class="field">
+        <label for="make">Make</label>
+        <input id="make" autocomplete="off" placeholder="Toyota">
+      </div>
+      <div class="field">
+        <label for="model">Model</label>
+        <input id="model" autocomplete="off" placeholder="Camry">
+      </div>
+      <div class="field full">
+        <label for="vin">VIN <span class="opt">— optional</span></label>
+        <input id="vin" autocomplete="off" maxlength="17" spellcheck="false"
+               placeholder="17 characters" style="text-transform:uppercase;">
+        <div class="err-text" id="vinErr"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Damage ============ -->
+  <section class="card">
+    <h2>Damage — tap the panels with hail</h2>
+    <p class="diagram-hint">Top-down view. Tap a panel to add it to the report, then log the dents below. Minimum 3 panels.</p>
+    <div class="diagram-wrap">
+      <svg id="car" class="car" viewBox="0 0 320 560" role="group" aria-label="Car panels. Tap to select.">
+        <!-- body outline + glass are drawn by script, panels injected here -->
+        <g id="carArt"></g>
+        <g id="panelLayer"></g>
+      </svg>
+    </div>
+    <p class="count-line"><b id="selCount">0</b> panel(s) selected</p>
+  </section>
+
+  <!-- ============ Per-panel entry ============ -->
+  <section class="card">
+    <h2>Panel detail</h2>
+    <div id="panelCards"></div>
+    <div class="empty" id="noPanels">No panels selected yet — tap the diagram above.</div>
+  </section>
+
+  <!-- ============ Report ============ -->
+  <section class="card" id="report" aria-live="polite">
+    <div class="report-head">
+      <span class="tag" id="reportTag">Report ready</span>
+    </div>
+    <div class="sum-veh" id="sumVeh"></div>
+    <div class="sum-sub" id="sumSub"></div>
+    <table class="sum">
+      <thead><tr><th>Panel</th><th>Size</th><th>Severity</th><th class="num">Dents</th></tr></thead>
+      <tbody id="sumBody"></tbody>
+    </table>
+    <div class="totals" id="sumTotals"></div>
+    <details class="json">
+      <summary>View submitted JSON</summary>
+      <pre id="json"></pre>
+    </details>
+  </section>
+
+</div>
+
+<div class="actions">
+  <div class="inner">
+    <button class="primary" id="submitBtn">Submit report</button>
+    <button class="ghost" id="nextBtn" title="Clear and start a new vehicle">Next&nbsp;vehicle</button>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* -------------------------------------------------------------------------
+   Panel catalogue + top-down layout.
+   Each panel carries its own diagram rectangle so the SVG and the data-entry
+   cards are generated from ONE source of truth.  viewBox is 320 x 560.
+   ------------------------------------------------------------------------- */
+const PANELS = [
+  { name: "Hood",                 x: 118, y: 60,  w: 84, h: 78 },
+  { name: "Left Fender",          x: 28,  y: 60,  w: 78, h: 78 },
+  { name: "Right Fender",         x: 214, y: 60,  w: 78, h: 78 },
+  { name: "Roof",                 x: 118, y: 210, w: 84, h: 120 },
+  { name: "Left Front Door",      x: 28,  y: 152, w: 78, h: 82 },
+  { name: "Right Front Door",     x: 214, y: 152, w: 78, h: 82 },
+  { name: "Left Rear Door",       x: 28,  y: 240, w: 78, h: 82 },
+  { name: "Right Rear Door",      x: 214, y: 240, w: 78, h: 82 },
+  { name: "Left Quarter Panel",   x: 28,  y: 344, w: 78, h: 96 },
+  { name: "Right Quarter Panel",  x: 214, y: 344, w: 78, h: 96 },
+  { name: "Trunk/Deck Lid",       x: 118, y: 344, w: 84, h: 96 },
+];
+const DENT_SIZES = ["Small", "Medium", "Large", "Oversized"];
+const SEVERITIES = ["Light", "Moderate", "Heavy"];
+const MIN_PANELS = 3;
+const MAX_DENTS = 100;
+
+const DRAFT_KEY  = "pdr.draft.v1";
+const OUTBOX_KEY = "pdr.outbox.v1";
+
+/* -------------------------------------------------------------------------
+   State.  `panels` is keyed by panel name so a panel keeps its dent data even
+   if it is toggled off and on again, and so the SVG, the cards, and the JSON
+   all read from the same object without any DOM-as-state guessing.
+   ------------------------------------------------------------------------- */
+const state = {
+  vehicle: { year: "", make: "", model: "", vin: "", color: "" },
+  panels: {}, // name -> { selected, dentCount, dentSize, severity }
+};
+for (const p of PANELS) {
+  state.panels[p.name] = { selected: false, dentCount: 1, dentSize: "", severity: "" };
+}
+
+const $ = (id) => document.getElementById(id);
+
+/* ---------------------------- Car diagram -------------------------------- */
+const SVGNS = "http://www.w3.org/2000/svg";
+function svg(tag, attrs) {
+  const el = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) el.setAttribute(k, attrs[k]);
+  return el;
+}
+
+function drawCarArt() {
+  const art = $("carArt");
+  // body shell + windshield/rear glass, purely decorative context
+  art.appendChild(svg("rect", { x: 18, y: 30, width: 284, height: 500, rx: 60, class: "car-outline" }));
+  art.appendChild(svg("path", { d: "M112 138 q48 -14 96 0 l-8 12 q-40 -10 -80 0 z", class: "car-glass" }));
+  art.appendChild(svg("path", { d: "M112 330 q48 14 96 0 l-8 -12 q-40 10 -80 0 z", class: "car-glass" }));
+}
+
+function drawPanels() {
+  const layer = $("panelLayer");
+  layer.textContent = "";
+  for (const p of PANELS) {
+    const g = svg("g", {
+      class: "panel-shape", "data-name": p.name,
+      role: "button", tabindex: "0",
+      "aria-pressed": "false",
+      "aria-label": p.name,
+    });
+    g.appendChild(svg("rect", { x: p.x, y: p.y, width: p.w, height: p.h, rx: 6 }));
+
+    // wrap label onto two lines so it fits inside the shape
+    const words = p.name.replace("/", " / ").split(" ");
+    const mid = Math.ceil(words.length / 2);
+    const line1 = words.slice(0, mid).join(" ");
+    const line2 = words.slice(mid).join(" ");
+    const cx = p.x + p.w / 2, cy = p.y + p.h / 2;
+    const t = svg("text", { x: cx, y: cy - (line2 ? 4 : -3), "text-anchor": "middle" });
+    const ts1 = svg("tspan", { x: cx, dy: "0" }); ts1.textContent = line1;
+    t.appendChild(ts1);
+    if (line2) { const ts2 = svg("tspan", { x: cx, dy: "11" }); ts2.textContent = line2; t.appendChild(ts2); }
+    g.appendChild(t);
+
+    // dent-count badge (hidden until >0 dents on a selected panel)
+    const bx = p.x + p.w - 12, by = p.y + 12;
+    const badge = svg("g", { class: "badge", opacity: "0" });
+    badge.appendChild(svg("circle", { class: "badge-bg", cx: bx, cy: by, r: 10 }));
+    const bt = svg("text", { class: "badge-txt", x: bx, y: by + 3, "text-anchor": "middle" });
+    badge.appendChild(bt);
+    g.appendChild(badge);
+
+    g.addEventListener("click", () => togglePanel(p.name));
+    g.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); togglePanel(p.name); }
+    });
+    layer.appendChild(g);
+  }
+}
+
+function refreshDiagram() {
+  let selected = 0;
+  for (const p of PANELS) {
+    const st = state.panels[p.name];
+    const g = $("panelLayer").querySelector('[data-name="' + cssName(p.name) + '"]');
+    if (!g) continue;
+    g.classList.toggle("on", st.selected);
+    g.setAttribute("aria-pressed", st.selected ? "true" : "false");
+    const badge = g.querySelector(".badge");
+    if (st.selected && st.dentCount > 0) {
+      badge.setAttribute("opacity", "1");
+      badge.querySelector(".badge-txt").textContent = st.dentCount;
+    } else {
+      badge.setAttribute("opacity", "0");
+    }
+    if (st.selected) selected++;
+  }
+  $("selCount").textContent = selected;
+}
+// querySelector needs an attribute match; names have spaces/slash so match raw
+function cssName(n) { return n.replace(/"/g, '\\"'); }
+
+/* ---------------------------- Panel cards -------------------------------- */
+function togglePanel(name) {
+  const st = state.panels[name];
+  st.selected = !st.selected;
+  renderCards();
+  refreshDiagram();
+  saveDraft();
+}
+
+function renderCards() {
+  const wrap = $("panelCards");
+  wrap.textContent = "";
+  const selected = PANELS.filter((p) => state.panels[p.name].selected);
+  $("noPanels").style.display = selected.length ? "none" : "block";
+
+  for (const p of selected) {
+    const st = state.panels[p.name];
+    const card = document.createElement("div");
+    card.className = "pcard";
+    card.dataset.name = p.name;
+
+    // header + remove
+    const top = document.createElement("div");
+    top.className = "top";
+    const nm = document.createElement("span");
+    nm.className = "pname"; nm.textContent = p.name;
+    const rm = document.createElement("button");
+    rm.className = "remove"; rm.type = "button"; rm.textContent = "Remove";
+    rm.setAttribute("aria-label", "Remove " + p.name);
+    rm.addEventListener("click", () => togglePanel(p.name));
+    top.append(nm, rm);
+
+    // dent stepper
+    const row1 = document.createElement("div");
+    row1.className = "field";
+    const lbl = document.createElement("label");
+    lbl.textContent = "Number of dents (1–" + MAX_DENTS + ")";
+    const step = document.createElement("div");
+    step.className = "stepper";
+    const minus = mkBtn("−", "Decrease dents on " + p.name);
+    const num = document.createElement("input");
+    num.type = "number"; num.min = "1"; num.max = String(MAX_DENTS);
+    num.inputMode = "numeric"; num.value = st.dentCount;
+    num.setAttribute("aria-label", "Dent count for " + p.name);
+    const plus = mkBtn("+", "Increase dents on " + p.name);
+    minus.addEventListener("click", () => setDents(p.name, st.dentCount - 1, num));
+    plus.addEventListener("click", () => setDents(p.name, st.dentCount + 1, num));
+    num.addEventListener("input", () => setDents(p.name, parseInt(num.value, 10), num, true));
+    num.addEventListener("blur", () => { num.value = state.panels[p.name].dentCount; });
+    step.append(minus, num, plus);
+    row1.append(lbl, step);
+
+    // size + severity
+    const row2 = document.createElement("div");
+    row2.className = "row";
+    row2.append(
+      mkSelect("Average dent size", DENT_SIZES, st.dentSize, "size-" + slug(p.name),
+        (v) => { state.panels[p.name].dentSize = v; saveDraft(); }),
+      mkSelect("Severity", SEVERITIES, st.severity, "sev-" + slug(p.name),
+        (v) => { state.panels[p.name].severity = v; saveDraft(); })
+    );
+
+    card.append(top, row1, row2);
+    wrap.appendChild(card);
+  }
+}
+
+function mkBtn(txt, aria) {
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = txt; b.setAttribute("aria-label", aria);
+  return b;
+}
+function mkSelect(labelTxt, opts, current, id, onChange) {
+  const f = document.createElement("div"); f.className = "field";
+  const l = document.createElement("label"); l.textContent = labelTxt; l.htmlFor = id;
+  const s = document.createElement("select"); s.id = id;
+  const ph = document.createElement("option");
+  ph.value = ""; ph.textContent = "Select…"; ph.disabled = true; ph.selected = !current;
+  s.appendChild(ph);
+  for (const o of opts) {
+    const opt = document.createElement("option");
+    opt.value = o; opt.textContent = o; if (o === current) opt.selected = true;
+    s.appendChild(opt);
+  }
+  s.addEventListener("change", () => onChange(s.value));
+  f.append(l, s);
+  return f;
+}
+function slug(n) { return n.toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
+
+function setDents(name, val, inputEl, typed) {
+  if (isNaN(val)) val = typed ? 1 : state.panels[name].dentCount;
+  val = Math.max(1, Math.min(MAX_DENTS, val));
+  state.panels[name].dentCount = val;
+  if (inputEl && !typed) inputEl.value = val;   // reflect stepper immediately
+  if (inputEl && typed && val !== parseInt(inputEl.value, 10)) inputEl.value = val;
+  refreshDiagram();
+  saveDraft();
+}
+
+/* ---------------------------- Vehicle inputs ----------------------------- */
+["year", "make", "model", "vin", "color"].forEach((k) => {
+  const el = $(k);
+  el.addEventListener("input", () => {
+    state.vehicle[k] = el.value;
+    if (k === "vin") validateVin(false);
+    saveDraft();
+  });
+});
+
+// VIN is optional; real VINs are 17 chars and never use I, O or Q
+// (so they can't be misread as 1 or 0). Validate only when something's typed.
+function validateVin(strict) {
+  const el = $("vin"), msg = $("vinErr");
+  const v = el.value.trim().toUpperCase();
+  el.classList.remove("invalid"); msg.textContent = "";
+  if (!v) return true;                          // optional -> empty is valid
+  if (v.length !== 17) {
+    if (strict) { el.classList.add("invalid"); msg.textContent = "VIN must be exactly 17 characters."; }
+    return false;
+  }
+  if (/[IOQ]/.test(v) || /[^A-HJ-NPR-Z0-9]/.test(v)) {
+    el.classList.add("invalid");
+    msg.textContent = "VIN can't contain I, O, Q or symbols.";
+    return false;
+  }
+  return true;
+}
+
+/* ---------------------------- Draft persistence -------------------------- */
+// Autosave every change so a reload / crash / accidental back-swipe in the
+// field never costs the tech the report they were part-way through.
+let saveTimer = null;
+function saveDraft() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(state)); } catch (e) { /* storage full/blocked */ }
+  }, 250);
+}
+// Cancel any pending debounced write, THEN remove the stored draft. Without the
+// cancel, a save scheduled a moment before submit/discard fires ~250ms later and
+// silently resurrects the draft we just cleared.
+function clearDraft() {
+  clearTimeout(saveTimer);
+  try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+}
+function loadDraft() {
+  let raw;
+  try { raw = localStorage.getItem(DRAFT_KEY); } catch (e) { return false; }
+  if (!raw) return false;
+  let saved;
+  try { saved = JSON.parse(raw); } catch (e) { return false; }
+  if (!saved || !saved.vehicle) return false;
+
+  Object.assign(state.vehicle, saved.vehicle);
+  for (const p of PANELS) {
+    if (saved.panels && saved.panels[p.name]) {
+      Object.assign(state.panels[p.name], saved.panels[p.name]);
+    }
+  }
+  // reflect into DOM
+  ["year", "make", "model", "vin", "color"].forEach((k) => { $(k).value = state.vehicle[k] || ""; });
+  const hasData = state.vehicle.year || state.vehicle.make ||
+    PANELS.some((p) => state.panels[p.name].selected);
+  return !!hasData;
+}
+$("discardDraft").addEventListener("click", () => {
+  clearDraft();
+  $("draftBanner").style.display = "none";
+  resetForm(false);
+});
+
+/* ---------------------------- Outbox (offline) --------------------------- */
+// When there's no signal we can't reach a server, so a submitted report is
+// stored on the device. It survives reloads and is still here when the tech
+// gets back to coverage. Actually pushing it to a backend is Part 2.
+function queueOutbox(report) {
+  let box = readOutbox();
+  box.push({ id: "r_" + Date.now(), status: "queued", queuedAt: new Date().toISOString(), report });
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(box)); } catch (e) {}
+  return box.length;
+}
+function readOutbox() {
+  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]"); } catch (e) { return []; }
+}
+
+/* ---------------------------- Validation + submit ------------------------ */
+function collectErrors() {
+  const errs = [];
+  const v = state.vehicle;
+  if (!v.year.trim())  errs.push("Year is required.");
+  if (!v.make.trim())  errs.push("Make is required.");
+  if (!v.model.trim()) errs.push("Model is required.");
+  if (!v.color.trim()) errs.push("Color is required.");
+  if (!validateVin(true)) errs.push("Fix the VIN or clear it (it's optional).");
+
+  const chosen = PANELS.filter((p) => state.panels[p.name].selected);
+  if (chosen.length < MIN_PANELS) errs.push("Select at least " + MIN_PANELS + " panels.");
+  for (const p of chosen) {
+    const st = state.panels[p.name];
+    if (!(st.dentCount >= 1 && st.dentCount <= MAX_DENTS)) errs.push(p.name + ": dent count must be 1-" + MAX_DENTS + ".");
+    if (!st.dentSize) errs.push(p.name + ": choose an average dent size.");
+    if (!st.severity) errs.push(p.name + ": choose a severity.");
+  }
+  return errs;
+}
+
+function buildPayload() {
+  const v = state.vehicle;
+  const vehicle = { year: v.year.trim(), make: v.make.trim(), model: v.model.trim(), color: v.color.trim() };
+  const vin = v.vin.trim().toUpperCase();
+  if (vin) vehicle.vin = vin;                   // only include when provided
+  const panels = PANELS.filter((p) => state.panels[p.name].selected).map((p) => {
+    const st = state.panels[p.name];
+    return { name: p.name, dentCount: st.dentCount, dentSize: st.dentSize, severity: st.severity };
+  });
+  return { vehicle, panels };
+}
+
+$("submitBtn").addEventListener("click", () => {
+  const errs = collectErrors();
+  if (errs.length) {
+    validateVin(true);
+    alert("Please fix before submitting:\n\n- " + errs.join("\n- "));
+    return;
+  }
+  const payload = buildPayload();
+  const offline = !navigator.onLine;
+  let queuedCount = 0;
+  if (offline) queuedCount = queueOutbox(payload);
+  showReport(payload, offline, queuedCount);
+  // report is "handed off" - clear the working draft so the next reload is clean
+  clearDraft();
+  $("report").scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+function showReport(payload, offline, queuedCount) {
+  const rep = $("report");
+  rep.classList.add("show");
+  const tag = $("reportTag");
+  if (offline) {
+    tag.textContent = "No signal - saved on device (" + queuedCount + " queued)";
+    tag.classList.add("queued");
+  } else {
+    tag.textContent = "Report ready";
+    tag.classList.remove("queued");
+  }
+  const v = payload.vehicle;
+  $("sumVeh").textContent = [v.year, v.make, v.model].filter(Boolean).join(" ");
+  $("sumSub").textContent = v.color + (v.vin ? "  ·  VIN " + v.vin : "  ·  no VIN");
+
+  const body = $("sumBody"); body.textContent = "";
+  let totalDents = 0;
+  for (const pn of payload.panels) {
+    totalDents += pn.dentCount;
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      "<td>" + esc(pn.name) + "</td><td>" + esc(pn.dentSize) + "</td><td>" +
+      esc(pn.severity) + "</td><td class='num'>" + pn.dentCount + "</td>";
+    body.appendChild(tr);
+  }
+  $("sumTotals").innerHTML =
+    "<b>" + payload.panels.length + "</b> panel(s) · <b>" + totalDents + "</b> total dents";
+  $("json").textContent = JSON.stringify(payload, null, 2);
+}
+function esc(s) {
+  return String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+/* ---------------------------- Reset / next vehicle ----------------------- */
+function resetForm(keepReport) {
+  state.vehicle = { year: "", make: "", model: "", vin: "", color: "" };
+  for (const p of PANELS) state.panels[p.name] = { selected: false, dentCount: 1, dentSize: "", severity: "" };
+  ["year", "make", "model", "vin", "color"].forEach((k) => { $(k).value = ""; });
+  $("vinErr").textContent = ""; $("vin").classList.remove("invalid");
+  renderCards();
+  refreshDiagram();
+  if (!keepReport) $("report").classList.remove("show");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+$("nextBtn").addEventListener("click", () => {
+  if (PANELS.some((p) => state.panels[p.name].selected) || state.vehicle.year) {
+    if (!confirm("Start a new vehicle? The current report has already been saved/submitted; the form will be cleared.")) return;
+  }
+  clearDraft();
+  resetForm(false);
+});
+
+/* ---------------------------- Network status ----------------------------- */
+function paintNet() {
+  const el = $("net"), lbl = $("netLabel");
+  if (navigator.onLine) { el.classList.remove("off"); lbl.textContent = "Online"; }
+  else { el.classList.add("off"); lbl.textContent = "Offline - reports save here"; }
+}
+window.addEventListener("online", () => {
+  paintNet();
+  const n = readOutbox().filter((r) => r.status === "queued").length;
+  if (n) console.info("[PDR] Back online with " + n + " queued report(s) ready to sync (needs backend - Part 2).");
+});
+window.addEventListener("offline", paintNet);
+
+/* ---------------------------- Boot --------------------------------------- */
+drawCarArt();
+drawPanels();
+const restored = loadDraft();
+renderCards();
+refreshDiagram();
+paintNet();
+if (restored) $("draftBanner").style.display = "flex";
+</script>
+</body>
+</html>
